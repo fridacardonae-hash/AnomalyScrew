@@ -19,6 +19,7 @@ import time
 from watchdog.observers import Observer
 from watchdog_handler import AOIWatchdogHandler
 
+
 import sys
 from plc import SLMP_PLC
 from tkinter import messagebox
@@ -81,9 +82,9 @@ class AnomalibDetection(ctk.CTk):
         self.file_name = datetime.now().strftime('%m-%d-%Y')
         with open(self.file_name, mode="w", newline="") as file:
             writer=csv.writer(file)
-            writer.writerow(["ISN", "score_1" "score_2", "score_3", "resultS1", "resultS2", "resultS3"])
+            writer.writerow(["ISN", "score_1", "score_2", "score_3", "resultS1", "resultS2", "resultS3", "overall_result"])
         
-        self.start_time = datetime.now()
+        #self.start_time = datetime.now()
         self.setup_gui()
         self.root.mainloop()
         self.is_scanning_online = False
@@ -434,7 +435,7 @@ class AnomalibDetection(ctk.CTk):
     def Inspection1(self):
         #self.output_image1 = None
         try:
-            self.autoinspector = AutoInspector(self.openvino_model_path1, self.file_config, self.is_scanning_online)
+            self.autoinspector = AutoInspector(self.openvino_model_path1, self.file_config, self.is_scanning_online, self.img_format)
             self.output_image1, self.roi1, self.score1, self.result1 = self.autoinspector.analyzePic1(self.img_path)
            
             print("processed with screw 1")
@@ -445,7 +446,7 @@ class AnomalibDetection(ctk.CTk):
     def Inspection2(self):
         #self.output_image2 = None
         try:
-            self.autoinspector2 = AutoInspector2(self.openvino_model_path2, self.file_config, self.is_scanning_online)
+            self.autoinspector2 = AutoInspector2(self.openvino_model_path2, self.file_config, self.is_scanning_online, self.img_format)
             self.output_image2, self.roi2, self.score2, self.result2 = self.autoinspector2.analyzePic2(self.img_path)
            
             print("processed with screw 2")
@@ -456,7 +457,7 @@ class AnomalibDetection(ctk.CTk):
     def Inspection3(self):
         #self.output_image3 = None
         try:
-            self.autoinspector3 = AutoInspector3(self.openvino_model_path3, self.file_config, self.is_scanning_online)
+            self.autoinspector3 = AutoInspector3(self.openvino_model_path3, self.file_config, self.is_scanning_online, self.img_format)
             self.output_image3, self.roi3, self.score3, self.result3 = self.autoinspector3.analyzePic3(self.img_path2)
      
             print("processed with screw 3")
@@ -476,26 +477,35 @@ class AnomalibDetection(ctk.CTk):
         observer.schedule(event_handler, self.auto_folder_path, recursive=True)
         observer.start()
 
-        try:
-            while self.is_scanning_online:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            observer.stop()
+        
+        while self.is_scanning_online:
+            time.sleep(1)
+
 
         observer.stop()
         observer.join()
-
-    def _try_process_isn(self, isn, cam_folder):
+#reelplazo cam_folder por isn_folder 
+    def _try_process_isn(self, isn, isn_folder):
+        self.img_format = " "
         corr1 = self.file_config["Image_correlation1"]
         corr2 = self.file_config["Image_correlation2"]
 
-        img1 = os.path.join(cam_folder, corr1)
-        img2 = os.path.join(cam_folder, corr2)
+        img1 = os.path.join(isn_folder, corr1)
+        img2 = os.path.join(isn_folder, corr2)
 
         if not os.path.exists(img1) or not os.path.exists(img2):
-            return  
+            corr3 = self.file_config["Image_correlation3"]
+            corr4 = self.file_config["Image_correlation4"]
+
+            img1 = os.path.join(isn_folder, corr3)
+            img2 = os.path.join(isn_folder, corr4)
+            self.img_format = "JPEG"
+
+            if not os.path.exists(img1) or not os.path.exists(img2):
+                return  
         time.sleep(1)
         print(f"Ambas imágenes listas para ISN {isn}")
+        print("el formato de la imagen es", self.img_format)
         self.processed_folders.add(isn)
         self._process_isn(isn, img1, img2)
         #self.after(5, lambda:self._post_process())
@@ -503,7 +513,6 @@ class AnomalibDetection(ctk.CTk):
 
     def _process_isn(self, isn, img1, img2):
         print(f"Procesando ISN {isn}")
-
         self.img_path = img1
         print("procesando imagen", self.img_path)
         self.img_path2 = img2
@@ -519,13 +528,17 @@ class AnomalibDetection(ctk.CTk):
         if hasattr(self, "roi3"):
             print("Actualizando ui")
             self.update_ui1()
-            self.save_log()
-        if self.result1 == "NG" or self.result2 == "NG" or self.result3 == "NG":
-            self.save_log_online ()
-            self.check_plc = self.switch_plc.get()
-            if self.switch_plc.get() == 1:
-                print("PLC trigger sent")
-                #self.myPLC.activeAddress(815)
+            
+            if self.result1 == "NG" or self.result2 == "NG" or self.result3 == "NG":
+                self.pop_message()
+            else:
+                self.overall_res = "OK"
+                self.save_log()
+                self.save_log_online ()
+                #self.check_plc = self.switch_plc.get()
+                #if self.switch_plc.get() == 1:
+                    #print("PLC trigger sent")
+                    #self.myPLC.activeAddress(815)
 
     def update_ui1(self):
 
@@ -585,6 +598,22 @@ class AnomalibDetection(ctk.CTk):
         else:
             self.button_res4.configure(text="OK", fg_color = "green")
 
+    def pop_message(self):
+        response = messagebox.askyesno("Verify NG", "Is this a real NG?")
+        
+        if response == True:
+            self.overall_res = "NG"
+            self.result1 = " "
+            self.result2 = " "
+            self.result3 = " "
+            self.save_log()
+            self.save_log_online ()
+        else:
+            self.overall_res = "OK"
+            self.save_log()
+            self.save_log_online ()
+
+
 
     def save_log_online (self):
         
@@ -613,8 +642,8 @@ class AnomalibDetection(ctk.CTk):
 
                 with open(csv_path, mode="w", newline="") as file:
                     writer = csv.writer(file)
-                    writer.writerow(["ISN", "score_1" "score_2", "score_3", "resultS1", "resultS2", "resultS3"])
-                    writer.writerow([self.ISNs, self.score1, self.score2, self.score3, self.result1, self.result2, self.result3])
+                    writer.writerow(["ISN", "score_1", "score_2", "score_3", "resultS1", "resultS2", "resultS3", "Overall_res"])
+                    writer.writerow([self.ISNs, self.score1, self.score2, self.score3, self.result1, self.result2, self.result3, self.overall_res])
             except Exception as e:
                 print("Error al intentar escribir el log", e)
     
@@ -622,7 +651,11 @@ class AnomalibDetection(ctk.CTk):
         
         with open(self.file_name, mode="a", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow([self.ISNs, self.score1, self.score2, self.score3, self.result1, self.result2, self.result3])     
+            writer.writerow([self.ISNs, self.score1, self.score2, self.score3, self.result1, self.result2, self.result3, self.overall_res])     
+
+    def on_close(self):
+        self.is_scanning_online =False
+        self.destroy()
 
 if __name__ == "__main__":
     AnomalibDetection()

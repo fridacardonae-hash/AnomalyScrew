@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from anomalib.deploy import OpenVINOInferencer
 from pathlib import Path
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageFilter
 from anomalib.visualization import ImageVisualizer
 import json
 import cv2
@@ -16,10 +16,11 @@ import threading
 
 
 class AutoInspector2:
-    def __init__(self, openvino_model_path2, file_config, is_scanning):
+    def __init__(self, openvino_model_path2, file_config, is_scanning, img_format):
         super().__init__()
         self.openvino_model_path2 = openvino_model_path2
         self.file_config = file_config
+        self.img_format = img_format
         #self.processed_log = self.file_config["enviados_log"]
         self.score_limit2 = float(self.file_config["scorelimit2"])
         self.is_scanning_online = is_scanning
@@ -39,6 +40,15 @@ class AutoInspector2:
         try:
 
             image = Image.open(image_paths)
+        
+            if self.img_format != "JPEG":
+                print("imagen tiff convirtiendo a jpeg")
+                img_np = np.array(image, dtype=np.float32)
+                img_np = img_np / 255.0
+                img_np = np.clip(img_np, 0.0, 1.0)
+                img_np = (img_np * 255).astype(np.uint8)
+                image = Image.fromarray(img_np, mode = "RGB")
+                image = image.filter(ImageFilter.GaussianBlur(radius=0.6))   
             #x1,y1,x2,y2
             box = (1116, 2305, 1683, 2739)
             print("snipping screw 2")

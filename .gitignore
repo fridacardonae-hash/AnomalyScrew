@@ -1,0 +1,8 @@
+.venv/
+venv/
+__pycache__/
+weights/
+paquetes_offline/
+openvino_cache/
+weights_prev/
+weights_tif/
